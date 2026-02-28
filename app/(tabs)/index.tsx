@@ -1,8 +1,11 @@
+import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import LoginScreen from './Login'; // 確保路徑正確
-// 如果你有 HomeScreen，可以在這裡切換
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+
+// 匯入組件
+import LoginScreen from './Login';
+import TabNavigator from './TabNavigator'; // 匯入剛剛拆分出去的檔案
 
 export default function AppIndex() {
   const [loading, setLoading] = useState(true);
@@ -19,12 +22,26 @@ export default function AppIndex() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#000' }}>
-        <ActivityIndicator size="large" color="#fff" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6200ee" />
       </View>
     );
   }
 
-  // 暫時都導向 Login，等你有首頁後可以改成：user ? <HomeScreen /> : <LoginScreen />
-  return <LoginScreen />;
+  return (
+    <NavigationIndependentTree>
+      <NavigationContainer>
+        {user ? <TabNavigator /> : <LoginScreen />}
+      </NavigationContainer>
+    </NavigationIndependentTree>
+  );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+});
