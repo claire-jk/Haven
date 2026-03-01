@@ -11,6 +11,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@azesmway/react-native-unity": "^1.0.11",
     "@expo-google-fonts/caveat": "^0.4.2",
     "@expo-google-fonts/great-vibes": "^0.4.1",
     "@expo-google-fonts/zen-kurenaido": "^0.4.1",
