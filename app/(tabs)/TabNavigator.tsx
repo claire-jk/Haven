@@ -14,7 +14,7 @@ export default function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        // 1. 頂部標題樣式
+        // 1. 頂部標題與字體樣式
         headerTitleStyle: {
           fontFamily: 'ZenKurenaido',
           fontSize: 18,
@@ -23,40 +23,39 @@ export default function TabNavigator() {
         tabBarLabelStyle: {
           fontFamily: 'ZenKurenaido',
           fontSize: 11,
-          marginBottom: 8, // 在浮動列中稍微向上微調
+          marginBottom: 8,
         },
-        // 3. 核心修改：浮動膠囊式 Tab Bar 樣式
+        // 3. 浮動膠囊式 Tab Bar 樣式
         tabBarStyle: {
           height: 65,
           position: 'absolute',
-          bottom: 20,          // 距離螢幕底部 20 單位
-          left: 20,            // 左右留白
+          bottom: 20,
+          left: 20,
           right: 20,
-          borderRadius: 35,    // 圓角造型
+          borderRadius: 35,
           backgroundColor: '#ffffff',
-          elevation: 10,       // Android 陰影
-          shadowColor: '#000', // iOS 陰影
+          elevation: 10,
+          shadowColor: '#000',
           shadowOffset: { width: 0, height: 5 },
           shadowOpacity: 0.1,
           shadowRadius: 10,
-          borderTopWidth: 0,   // 移除頂部預設細線
-          paddingBottom: 0,    // 浮動狀態不需要額外 padding
+          borderTopWidth: 0,
+          paddingBottom: 0,
         },
-        // 4. 圖示設定
+        // 4. 圖示設定：改用英文 name 進行條件判斷
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: any;
 
-          if (route.name === '避風港地圖') {
+          if (route.name === 'Map') {
             iconName = focused ? 'map' : 'map-outline';
-          } else if (route.name === '碎片時光牆') {
+          } else if (route.name === 'Timeline') {
             iconName = focused ? 'layers' : 'layers-outline';
-          } else if (route.name === '療癒中心') {
+          } else if (route.name === 'HealingCenter') {
             iconName = focused ? 'heart' : 'heart-outline';
-          } else if (route.name === '個人設定') {
+          } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
 
-          // 圖示稍微往下移一點點，與標籤文字保持平衡
           return <Ionicons name={iconName} size={size} color={color} style={{ marginTop: 5 }} />;
         },
         tabBarActiveTintColor: '#6200ee',
@@ -64,10 +63,30 @@ export default function TabNavigator() {
         headerShown: true,
       })}
     >
-      <Tab.Screen name="避風港地圖" component={MapScreen} />
-      <Tab.Screen name="碎片時光牆" component={TimeWallScreen} />
-      <Tab.Screen name="療癒中心" component={HealingCenterScreen} />
-      <Tab.Screen name="個人設定" component={ProfileScreen} />
+      {/* 關鍵修正：
+         name 必須對應 ProfileScreen 裡的 target 屬性 (Map, Timeline, HealingCenter)
+         options 的 title 會顯示在 Tab 標籤與頂部 Header
+      */}
+      <Tab.Screen 
+        name="Map" 
+        component={MapScreen} 
+        options={{ title: '避風港地圖' }} 
+      />
+      <Tab.Screen 
+        name="Timeline" 
+        component={TimeWallScreen} 
+        options={{ title: '碎片時光牆' }} 
+      />
+      <Tab.Screen 
+        name="HealingCenter" 
+        component={HealingCenterScreen} 
+        options={{ title: '療癒中心' }} 
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen} 
+        options={{ title: '個人設定' }} 
+      />
     </Tab.Navigator>
   );
 }
