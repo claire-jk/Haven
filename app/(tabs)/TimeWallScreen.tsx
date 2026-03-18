@@ -7,6 +7,7 @@ import {
   ImageBackground,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -40,6 +41,7 @@ const { width, height } = Dimensions.get('window');
 
 interface Fragment {
   id: string;
+  title: string; // 新增標題
   content: string;
   color: string;
   top: number;
@@ -54,13 +56,17 @@ interface Fragment {
 const TimeWallScreen = () => {
   const [fragments, setFragments] = useState<Fragment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [inputText, setInputText] = useState('');
   
-  // 刪除確認相關狀態
+  // Modals 狀態
+  const [addModalVisible, setAddModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [viewModalVisible, setViewModalVisible] = useState(false);
+  
+  // 數據狀態
+  const [inputTitle, setInputTitle] = useState(''); // 新增標題狀態
+  const [inputText, setInputText] = useState('');
+  const [selectedFragment, setSelectedFragment] = useState<Fragment | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
-
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -98,19 +104,18 @@ const TimeWallScreen = () => {
   useEffect(() => {
     Gyroscope.setUpdateInterval(16);
     const subscription = Gyroscope.addListener(data => {
-      gyroX.value = withSpring(data.x * 12);
-      gyroY.value = withSpring(data.y * 12);
+      // 增加平滑度處理
+      gyroX.value = withSpring(data.x * 15, { damping: 20 });
+      gyroY.value = withSpring(data.y * 15, { damping: 20 });
     });
     return () => subscription.remove();
   }, []);
 
-  // 開啟刪除確認 Modal
   const confirmDelete = (id: string) => {
     setItemToDelete(id);
     setDeleteModalVisible(true);
   };
 
-  // 執行刪除
   const handleDelete = async () => {
     if (!itemToDelete) return;
     try {
@@ -123,33 +128,36 @@ const TimeWallScreen = () => {
   };
 
   const addFragment = async () => {
-    if (inputText.trim() === '' || !user) return;
+    if (inputTitle.trim() === '' || inputText.trim() === '' || !user) return;
 
     const dreamColors = [
-      'rgba(255, 222, 233, 0.75)', 
-      'rgba(181, 255, 252, 0.75)', 
-      'rgba(224, 195, 252, 0.75)', 
-      'rgba(139, 198, 236, 0.75)', 
-      'rgba(255, 251, 125, 0.75)'
+      'rgba(255, 222, 233, 0.85)', 
+      'rgba(181, 255, 252, 0.85)', 
+      'rgba(224, 195, 252, 0.85)', 
+      'rgba(139, 198, 236, 0.85)', 
+      'rgba(255, 251, 125, 0.85)'
     ];
     
     try {
       await addDoc(collection(db, "fragments"), {
+        title: inputTitle, // 儲存標題
         content: inputText,
         color: dreamColors[Math.floor(Math.random() * dreamColors.length)],
-        top: Math.random() * (height - 450) + 120,
-        left: Math.random() * (width - 160) + 30,
-        size: Math.random() * 50 + 100,
-        depth: Math.random() * 2.5 + 0.5,
+        // 優化分佈：避免太靠底部 (範圍限制在螢幕中間 15%~70% 的位置)
+        top: Math.random() * (height * 0.55) + (height * 0.15),
+        left: Math.random() * (width - 150) + 25,
+        size: Math.random() * 30 + 110,
+        depth: Math.random() * 2.0 + 0.8,
         rotation: Math.random() * 20 - 10,
         userId: user.uid,
         memoryDate: selectedDate,
         createdAt: serverTimestamp(),
       });
       
+      setInputTitle('');
       setInputText('');
       setSelectedDate(new Date());
-      setModalVisible(false);
+      setAddModalVisible(false);
     } catch (error) {
       console.error("Add Error", error);
     }
@@ -158,6 +166,11 @@ const TimeWallScreen = () => {
   const onDateChange = (event: any, date?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (date) setSelectedDate(date);
+  };
+
+  const handleViewFragment = (fragment: Fragment) => {
+    setSelectedFragment(fragment);
+    setViewModalVisible(true);
   };
 
   if (loading) {
@@ -178,11 +191,11 @@ const TimeWallScreen = () => {
       >
         <View style={styles.overlay}>
           <Text style={styles.header}>心靈碎片牆</Text>
-          <Text style={styles.subHeader}>漂浮在星空中的記憶</Text>
+          <Text style={styles.subHeader}>點擊標題以喚醒完整的回憶</Text>
 
           {fragments.length > 0 ? (
             fragments.map((item, index) => {
-              const visualDepth = index * 0.12; 
+              const visualDepth = index * 0.1; 
               return (
                 <FloatingFragment 
                   key={item.id} 
@@ -190,6 +203,7 @@ const TimeWallScreen = () => {
                   gyroX={gyroX} 
                   gyroY={gyroY} 
                   visualDepth={visualDepth}
+                  onPress={() => handleViewFragment(item)}
                   onLongPress={() => confirmDelete(item.id)}
                 />
               );
@@ -203,27 +217,41 @@ const TimeWallScreen = () => {
           <TouchableOpacity 
             activeOpacity={0.8}
             style={styles.fab} 
-            onPress={() => setModalVisible(true)}
+            onPress={() => setAddModalVisible(true)}
           >
             <View style={styles.fabInner}>
               <Text style={styles.fabIcon}>+</Text>
             </View>
           </TouchableOpacity>
 
+          {/* --- 檢視碎片回憶 Modal --- */}
+          <Modal visible={viewModalVisible} animationType="fade" transparent={true}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: selectedFragment?.color || '#FFF' }]}>
+                <Text style={styles.viewDateText}>
+                  {selectedFragment ? new Date(selectedFragment.memoryDate?.seconds * 1000).toLocaleDateString() : ''}
+                </Text>
+                {/* 顯示完整標題 */}
+                <Text style={styles.modalTitleText}>{selectedFragment?.title}</Text>
+                <View style={styles.divider} />
+                <ScrollView showsVerticalScrollIndicator={false}>
+                   <Text style={styles.viewContentText}>{selectedFragment?.content}</Text>
+                </ScrollView>
+                <TouchableOpacity onPress={() => setViewModalVisible(false)} style={styles.btnCloseView}>
+                   <Text style={styles.btnCloseText}>闔上回憶</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
           {/* --- 新增碎片的 Modal --- */}
-          <Modal visible={modalVisible} animationType="fade" transparent={true}>
+          <Modal visible={addModalVisible} animationType="fade" transparent={true}>
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>捕捉這段碎片</Text>
-                
-                <TouchableOpacity 
-                  activeOpacity={0.7}
-                  style={styles.dateSelector} 
-                  onPress={() => setShowDatePicker(true)}
-                >
+                <TouchableOpacity style={styles.dateSelector} onPress={() => setShowDatePicker(true)}>
                   <Text style={styles.dateText}>📅 記憶日期: {selectedDate.toLocaleDateString()}</Text>
                 </TouchableOpacity>
-
                 {showDatePicker && (
                   <DateTimePicker
                     value={selectedDate}
@@ -233,18 +261,25 @@ const TimeWallScreen = () => {
                     maximumDate={new Date()}
                   />
                 )}
-
+                {/* 標題輸入 */}
+                <TextInput
+                  style={styles.titleInput}
+                  placeholder="標題 (回憶的引子)"
+                  placeholderTextColor="#BBB"
+                  value={inputTitle}
+                  onChangeText={setInputTitle}
+                />
+                {/* 內容輸入 */}
                 <TextInput
                   style={styles.input}
-                  placeholder="在星空中寫下..."
+                  placeholder="在星空中寫下細節..."
                   placeholderTextColor="#BBB"
                   multiline
                   value={inputText}
                   onChangeText={setInputText}
                 />
-                
                 <View style={styles.buttonGroup}>
-                  <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.btnCancel}>
+                  <TouchableOpacity onPress={() => setAddModalVisible(false)} style={styles.btnCancel}>
                     <Text style={styles.btnCancelText}>消散</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={addFragment} style={styles.btnConfirm}>
@@ -255,40 +290,30 @@ const TimeWallScreen = () => {
             </View>
           </Modal>
 
-          {/* --- 修正：自定義消散確認的 Modal (圓角 + 字體) --- */}
+          {/* --- 消散確認 Modal --- */}
           <Modal visible={deleteModalVisible} animationType="fade" transparent={true}>
             <View style={styles.modalOverlay}>
               <View style={[styles.modalContent, styles.deleteModal]}>
                 <Text style={styles.modalTitle}>消散記憶</Text>
-                <Text style={styles.deleteSubText}>
-                  確定要讓這段碎片從夢境中消失嗎？{"\n"}一旦消散將無法尋回。
-                </Text>
-                
+                <Text style={styles.deleteSubText}>確定要讓這段碎片從夢境中消失嗎？{"\n"}一旦消散將無法尋回。</Text>
                 <View style={styles.buttonGroup}>
-                  <TouchableOpacity 
-                    onPress={() => setDeleteModalVisible(false)} 
-                    style={styles.btnCancel}
-                  >
+                  <TouchableOpacity onPress={() => setDeleteModalVisible(false)} style={styles.btnCancel}>
                     <Text style={styles.btnCancelText}>保留記憶</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={handleDelete} 
-                    style={[styles.btnConfirm, { backgroundColor: '#FF6B6B' }]}
-                  >
+                  <TouchableOpacity onPress={handleDelete} style={[styles.btnConfirm, { backgroundColor: '#FF6B6B' }]}>
                     <Text style={styles.btnConfirmText}>確認消散</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
           </Modal>
-
         </View>
       </ImageBackground>
     </View>
   );
 };
 
-const FloatingFragment = ({ item, gyroX, gyroY, visualDepth, onLongPress }: any) => {
+const FloatingFragment = ({ item, gyroX, gyroY, visualDepth, onPress, onLongPress }: any) => {
   const floatAnim = useSharedValue(Math.random() * 10);
   
   useEffect(() => {
@@ -302,19 +327,20 @@ const FloatingFragment = ({ item, gyroX, gyroY, visualDepth, onLongPress }: any)
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
-    const driftEffect = 1 / (1 + visualDepth); 
-    const tx = gyroY.value * item.depth * 5 * driftEffect;
-    const ty = (gyroX.value * item.depth * 5 * driftEffect) + floatAnim.value;
+    // 陀螺儀精準度計算：利用相對位置調整偏移係數
+    const relativeX = (width / 2 - item.left) / (width / 2);
+    const tx = (gyroY.value * item.depth * 6) + (gyroY.value * relativeX * 2);
+    const ty = (gyroX.value * item.depth * 6) + floatAnim.value;
     const scaleBase = 1 - (visualDepth * 0.04);
 
     return {
       transform: [
         { translateX: tx },
         { translateY: ty },
-        { rotateZ: `${(item.rotation || 0) + (tx / 20)}deg` },
+        { rotateZ: `${(item.rotation || 0) + (tx / 15)}deg` },
         { scale: withSpring(scaleBase) }
       ],
-      opacity: withSpring(Math.max(0.25, 0.85 - (visualDepth * 0.08))),
+      opacity: withSpring(Math.max(0.4, 0.95 - (visualDepth * 0.08))),
     };
   });
 
@@ -325,12 +351,14 @@ const FloatingFragment = ({ item, gyroX, gyroY, visualDepth, onLongPress }: any)
       zIndex: 100 - Math.floor(visualDepth * 10) 
     }]}>
       <TouchableOpacity 
+        onPress={onPress}
         onLongPress={onLongPress} 
         activeOpacity={0.6}
         style={styles.fragmentTouch}
       >
         <Text style={styles.fragmentDate}>{new Date(item.memoryDate?.seconds * 1000).toLocaleDateString()}</Text>
-        <Text style={styles.fragmentText} numberOfLines={4}>{item.content}</Text>
+        {/* 牆面上只顯示標題 */}
+        <Text style={styles.fragmentTitle} numberOfLines={2}>{item.title}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -345,7 +373,7 @@ const styles = StyleSheet.create({
   header: { 
     marginTop: 70, 
     alignSelf: 'center', 
-    fontSize: 30, 
+    fontSize: 28, 
     color: '#FFF', 
     fontFamily: 'ZenKurenaido', 
     letterSpacing: 8,
@@ -355,11 +383,11 @@ const styles = StyleSheet.create({
   },
   subHeader: {
     alignSelf: 'center',
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.6)',
     fontFamily: 'ZenKurenaido',
     marginTop: 6,
-    letterSpacing: 4
+    letterSpacing: 2
   },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: 'rgba(255,255,255,0.35)', fontSize: 16, textAlign: 'center', lineHeight: 30, fontFamily: 'ZenKurenaido' },
@@ -367,43 +395,43 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     borderRadius: 22, 
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,255,255,0.3)',
     shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
     elevation: 5,
     overflow: 'hidden'
   },
   fragmentTouch: {
-    padding: 18,
+    padding: 15,
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
   fragmentDate: {
-    fontSize: 10,
-    color: 'rgba(0,0,0,0.35)',
+    fontSize: 9,
+    color: 'rgba(0,0,0,0.4)',
     fontFamily: 'ZenKurenaido',
-    marginBottom: 6,
-    letterSpacing: 1
+    marginBottom: 5,
   },
-  fragmentText: { 
-    fontSize: 15, 
-    color: '#333', 
+  fragmentTitle: { 
+    fontSize: 16, 
+    color: '#222', 
     textAlign: 'center', 
     fontFamily: 'ZenKurenaido',
-    lineHeight: 22 
+    lineHeight: 22,
+    fontWeight: '600'
   },
   fab: { 
     position: 'absolute', 
-    bottom: 110, 
+    bottom: 50, // 稍微上調避免遮擋
     right: 25, 
-    width: 72, 
-    height: 72, 
-    borderRadius: 36, 
-    backgroundColor: 'rgba(108, 99, 255, 0.25)',
-    padding: 6,
+    width: 70, 
+    height: 70, 
+    borderRadius: 35, 
+    backgroundColor: 'rgba(108, 99, 255, 0.2)',
+    padding: 5,
     justifyContent: 'center', 
     alignItems: 'center',
     zIndex: 999,
@@ -415,34 +443,66 @@ const styles = StyleSheet.create({
     backgroundColor: '#6C63FF',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
     elevation: 8,
-    shadowColor: '#6C63FF',
-    shadowOpacity: 0.5,
-    shadowRadius: 10
   },
-  fabIcon: { fontSize: 34, color: '#fff', fontWeight: '200' },
+  fabIcon: { fontSize: 30, color: '#fff', fontWeight: '200' },
   modalOverlay: { 
     flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.7)', 
+    backgroundColor: 'rgba(0,0,0,0.75)', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
   modalContent: { 
-    width: '88%', 
-    backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+    width: '85%', 
+    backgroundColor: '#FFF', 
     borderRadius: 28, 
     padding: 25,
-    borderWidth: 1,
-    borderColor: '#E0C3FC',
     elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 15
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)'
   },
-  deleteModal: {
-    borderColor: '#FFBABA', // 刪除視窗稍微帶一點紅色的邊框提示
+  viewDateText: {
+    fontFamily: 'ZenKurenaido',
+    fontSize: 14,
+    color: 'rgba(0,0,0,0.5)',
+    textAlign: 'center',
+    marginBottom: 5
+  },
+  modalTitleText: {
+    fontFamily: 'ZenKurenaido',
+    fontSize: 22,
+    color: '#000',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    width: '60%',
+    alignSelf: 'center',
+    marginBottom: 15
+  },
+  viewContentText: {
+    fontFamily: 'ZenKurenaido',
+    fontSize: 18,
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 30,
+    maxHeight: height * 0.4
+  },
+  btnCloseView: {
+    marginTop: 25,
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 25,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 20
+  },
+  btnCloseText: {
+    fontFamily: 'ZenKurenaido',
+    fontSize: 15,
+    color: '#444'
   },
   modalTitle: { 
     fontSize: 22, 
@@ -450,57 +510,61 @@ const styles = StyleSheet.create({
     marginBottom: 15, 
     color: '#2D2D2D',
     textAlign: 'center',
-    letterSpacing: 2
-  },
-  deleteSubText: {
-    fontFamily: 'ZenKurenaido',
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 20,
   },
   dateSelector: {
     backgroundColor: '#F4F3FF',
-    padding: 14,
+    padding: 12,
     borderRadius: 18,
-    marginBottom: 18,
+    marginBottom: 15,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#EBE9FF'
   },
   dateText: {
     color: '#6C63FF',
     fontFamily: 'ZenKurenaido',
+    fontSize: 16,
+  },
+  titleInput: {
+    borderRadius: 15,
+    padding: 15,
+    backgroundColor: '#F8F8FA',
     fontSize: 17,
-    letterSpacing: 1
+    fontFamily: 'ZenKurenaido',
+    color: '#222',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#EEE'
   },
   input: { 
     borderRadius: 18, 
-    height: 140, 
-    padding: 18, 
+    height: 100, 
+    padding: 15, 
     textAlignVertical: 'top', 
     backgroundColor: '#F8F8FA', 
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: 'ZenKurenaido',
     color: '#444',
     borderWidth: 1,
     borderColor: '#EEE'
   },
-  buttonGroup: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10 },
-  btnCancel: { paddingVertical: 12, paddingHorizontal: 20, justifyContent: 'center' },
+  buttonGroup: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 20 },
+  btnCancel: { paddingVertical: 12, paddingHorizontal: 20 },
   btnCancelText: { color: '#AAA', fontFamily: 'ZenKurenaido', fontSize: 16 },
   btnConfirm: { 
     paddingVertical: 12, 
     paddingHorizontal: 30, 
     backgroundColor: '#6C63FF', 
     borderRadius: 22,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 4
   },
-  btnConfirmText: { color: '#fff', fontFamily: 'ZenKurenaido', fontSize: 17, letterSpacing: 2 }
+  btnConfirmText: { color: '#fff', fontFamily: 'ZenKurenaido', fontSize: 17 },
+  deleteModal: { borderColor: '#FFBABA' },
+  deleteSubText: {
+    fontFamily: 'ZenKurenaido',
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 10,
+  },
 });
 
 export default TimeWallScreen;
