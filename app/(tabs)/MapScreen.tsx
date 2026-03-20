@@ -178,8 +178,8 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      {/* 頂部搜尋欄 */}
-      <View style={styles.topContainer}>
+      {/* 1. 頂部搜尋欄 - 修正 iOS 點擊攔截 */}
+      <View style={styles.topContainer} pointerEvents="box-none">
         <View style={styles.searchBar}>
           <TextInput
             style={styles.searchInput}
@@ -195,8 +195,8 @@ export default function MapScreen() {
         </View>
       </View>
 
-      {/* 右側功能鍵：僅保留一個定位鍵，風格美化 */}
-      <View style={styles.sideButtons}>
+      {/* 2. 右側功能鍵 - 修正 iOS 點擊攔截 */}
+      <View style={styles.sideButtons} pointerEvents="box-none">
         <TouchableOpacity style={styles.mainFab} onPress={centerOnUser}>
           <Ionicons name="navigate" size={24} color="white" />
         </TouchableOpacity>
@@ -208,8 +208,8 @@ export default function MapScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 底部提示文字：避開導航欄 */}
-      <View style={styles.hintWrapper}>
+      {/* 3. 底部提示文字 - 修正 iOS 點擊攔截 */}
+      <View style={styles.hintWrapper} pointerEvents="none">
         <View style={styles.hintBubble}>
           <Ionicons name="information-circle-outline" size={16} color="#6366F1" style={{marginRight: 6}} />
           <Text style={styles.hintText}>需要長按地點新增紓壓地點</Text>
@@ -218,7 +218,10 @@ export default function MapScreen() {
 
       {/* 新增地點 Modal */}
       <Modal animationType="slide" transparent={true} visible={modalVisible}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#0F172A' : '#FFF' }]}>
             <View style={styles.dragHandle} />
             <Text style={[styles.modalTitle, { color: isDarkMode ? '#F1F5F9' : '#1E293B' }]}>收藏這份寧靜</Text>
@@ -261,6 +264,7 @@ export default function MapScreen() {
   );
 }
 
+// ... 樣式表(styles)與地圖樣式(darkMapStyle)保持不變 ...
 const darkMapStyle = [
   { elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
@@ -270,14 +274,11 @@ const darkMapStyle = [
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: width, height: height },
-  
-  // 提示氣泡 (避開導航欄)
   hintWrapper: {
     position: 'absolute',
-    bottom: 100, // 增加距離確保不被 TabBar 擋住
+    bottom: 100,
     width: '100%',
     alignItems: 'center',
-    pointerEvents: 'none',
   },
   hintBubble: {
     flexDirection: 'row',
@@ -294,12 +295,9 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   hintText: {
-    fontFamily: 'ZenKurenaido',
     fontSize: 14,
     color: '#64748B',
   },
-
-  // 頂部搜尋
   topContainer: { position: 'absolute', top: 50, width: '100%', alignItems: 'center', paddingHorizontal: 20 },
   searchBar: {
     flexDirection: 'row',
@@ -313,10 +311,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 4 },
   },
-  searchInput: { flex: 1, fontFamily: 'ZenKurenaido', fontSize: 16 },
+  searchInput: { flex: 1, fontSize: 16 },
   searchIcon: { padding: 5 },
-
-  // 功能鍵
   sideButtons: { position: 'absolute', right: 20, top: 120, alignItems: 'center' },
   mainFab: {
     width: 56, height: 56, borderRadius: 28,
@@ -330,8 +326,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3,
   },
-
-  // Marker & Callout
   customMarker: {
     backgroundColor: 'white',
     padding: 6,
@@ -347,30 +341,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F1F5F9',
   },
-  calloutTitle: { fontFamily: 'ZenKurenaido', fontSize: 17, fontWeight: 'bold', marginBottom: 5 },
-  calloutAddress: { fontFamily: 'ZenKurenaido', fontSize: 12, color: '#94A3B8', marginBottom: 5 },
-  calloutMood: { fontFamily: 'ZenKurenaido', fontSize: 12, fontWeight: 'bold' },
-
-  // Modal
+  calloutTitle: { fontSize: 17, fontWeight: 'bold', marginBottom: 5 },
+  calloutAddress: { fontSize: 12, color: '#94A3B8', marginBottom: 5 },
+  calloutMood: { fontSize: 12, fontWeight: 'bold' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
   modalContent: { borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 30, paddingBottom: 50 },
   dragHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 2, marginBottom: 20 },
-  modalTitle: { fontFamily: 'ZenKurenaido', fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
-  modalAddress: { fontFamily: 'ZenKurenaido', fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 8 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
+  modalAddress: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 8 },
   modalInput: { 
     borderBottomWidth: 1.5, borderColor: '#6366F1', 
     marginTop: 30, paddingVertical: 10, 
-    fontFamily: 'ZenKurenaido', fontSize: 20, textAlign: 'center' 
+    fontSize: 20, textAlign: 'center' 
   },
   moodSelector: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 },
   moodItem: { 
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 8, 
     borderRadius: 20, borderWidth: 1, borderColor: '#F1F5F9', marginHorizontal: 5 
   },
-  moodItemText: { fontFamily: 'ZenKurenaido', fontSize: 14, marginLeft: 5, fontWeight: '600' },
+  moodItemText: { fontSize: 14, marginLeft: 5, fontWeight: '600' },
   modalFooter: { flexDirection: 'row', marginTop: 40, justifyContent: 'space-between' },
   cancelButton: { flex: 1, paddingVertical: 15, alignItems: 'center' },
-  cancelButtonText: { fontFamily: 'ZenKurenaido', color: '#94A3B8', fontSize: 16 },
+  cancelButtonText: { color: '#94A3B8', fontSize: 16 },
   saveButton: { flex: 2, backgroundColor: '#6366F1', borderRadius: 20, paddingVertical: 15, alignItems: 'center' },
-  saveButtonText: { fontFamily: 'ZenKurenaido', color: 'white', fontSize: 16, fontWeight: 'bold' },
+  saveButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
 });

@@ -26,6 +26,8 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// 修正關鍵：導入此 Hook 取得 TabBar 高度
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { auth, db } from './firebaseConfig';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -125,6 +127,14 @@ const HealingCenterScreen = () => {
   const insets = useSafeAreaInsets();
   const themeProgress = useSharedValue(0);
 
+  // 取得 TabBar 高度補償
+  let tabBarHeight = 0;
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch (e) {
+    tabBarHeight = 0;
+  }
+
   const hasBubbles = bubbles.length > 0;
 
   useEffect(() => {
@@ -160,11 +170,11 @@ const HealingCenterScreen = () => {
     const size = Math.min(Math.max(inputText.length * 5 + 110, 120), 170);
     const padding = 30;
     
-    // 計算安全範圍，避免泡泡生成在輸入框擋住的地方
     const minX = padding;
     const maxX = SCREEN_WIDTH - size - padding;
     const minY = insets.top + 100;
-    const maxY = SCREEN_HEIGHT - insets.bottom - 220 - size;
+    // 考慮 TabBar 高度，避免泡泡產生在輸入框下方
+    const maxY = SCREEN_HEIGHT - tabBarHeight - 180 - size;
 
     const newBubble = {
       id: Date.now(),
@@ -185,8 +195,8 @@ const HealingCenterScreen = () => {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        // 增加偏移量，確保輸入框不會被鍵盤遮擋
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        // 關鍵修正：加上 TabBar 高度補償
+        keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 20}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={{ flex: 1 }}>
@@ -210,8 +220,11 @@ const HealingCenterScreen = () => {
               ))}
             </View>
 
-            {/* Input Section - 確保 zIndex 足夠高 */}
-            <View style={[styles.inputWrapper, { paddingBottom: insets.bottom + 20 }]}>
+            {/* Input Section - 關鍵修正：增加 paddingBottom 以避開 TabBar */}
+            <View style={[
+              styles.inputWrapper, 
+              { paddingBottom: tabBarHeight > 0 ? tabBarHeight + 10 : insets.bottom + 20 }
+            ]}>
               <View style={styles.inputCard}>
                 <TextInput
                   style={styles.input}
@@ -221,9 +234,7 @@ const HealingCenterScreen = () => {
                   onChangeText={setInputText}
                   multiline={true}
                   maxLength={40}
-                  // 確保點擊 return 鍵可以正常反應
                   blurOnSubmit={true}
-                  // 修正：確保在某些裝置上文字不會因為行高消失
                   textAlignVertical="center"
                 />
                 <TouchableOpacity style={styles.sendButton} onPress={createBubble} activeOpacity={0.8}>
@@ -293,7 +304,6 @@ const styles = StyleSheet.create({
     minHeight: 45, 
     paddingHorizontal: 12,
     fontFamily: CUSTOM_FONT,
-    // 確保輸入文字清晰
     backgroundColor: 'transparent',
   },
   sendButton: { borderRadius: 18, overflow: 'hidden', marginLeft: 8 },
