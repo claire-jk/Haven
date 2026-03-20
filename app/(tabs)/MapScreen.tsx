@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useIsFocused } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -13,11 +14,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Callout, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
-// 定義心情類型與顏色
 const MOOD_OPTIONS = [
   { label: '靜謐', color: '#4A90E2', icon: 'leaf-outline' },
   { label: '溫馨', color: '#FF85A1', icon: 'heart-outline' },
@@ -31,6 +31,7 @@ interface RelaxMarker {
     longitude: number;
   };
   title: string;
+  address: string;
   moodColor: string;
   moodLabel: string;
 }
@@ -38,16 +39,16 @@ interface RelaxMarker {
 const { width, height } = Dimensions.get('window');
 
 export default function MapScreen() {
+  const isFocused = useIsFocused();
   const mapRef = useRef<MapView>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [markers, setMarkers] = useState<RelaxMarker[]>([]);
 
-  // 搜尋與新增相關 State
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [tempCoordinate, setTempCoordinate] = useState<any>(null);
+  const [tempAddress, setTempAddress] = useState('');
   const [newPlaceName, setNewPlaceName] = useState('');
   const [selectedMood, setSelectedMood] = useState(MOOD_OPTIONS[0]);
 
@@ -58,27 +59,6 @@ export default function MapScreen() {
     longitudeDelta: 0.01,
   });
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setIsSearching(true);
-    Keyboard.dismiss();
-    try {
-      const result = await Location.geocodeAsync(searchQuery);
-      if (result.length > 0) {
-        const { latitude, longitude } = result[0];
-        const newRegion = { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
-        setRegion(newRegion);
-        mapRef.current?.animateToRegion(newRegion, 1000);
-      } else {
-        alert('找不到該地點，請嘗試更精確的名稱');
-      }
-    } catch (error) {
-      alert('搜尋出錯，請檢查網路連線');
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
   const loadMarkers = async () => {
     try {
       const storedMarkers = await AsyncStorage.getItem('markers');
@@ -88,22 +68,14 @@ export default function MapScreen() {
     }
   };
 
-  const saveMarkers = async (newMarkers: RelaxMarker[]) => {
-    try {
-      await AsyncStorage.setItem('markers', JSON.stringify(newMarkers));
-    } catch (error) {
-      console.error('Failed to save markers:', error);
-    }
-  };
+  useEffect(() => {
+    if (isFocused) loadMarkers();
+  }, [isFocused]);
 
   useEffect(() => {
-    loadMarkers();
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('讀取位置權限被拒絕');
-        return;
-      }
+      if (status !== 'granted') return;
       let userLocation = await Location.getCurrentPositionAsync({});
       const newRegion = {
         ...region,
@@ -115,35 +87,69 @@ export default function MapScreen() {
     })();
   }, []);
 
-  const handleLongPress = (e: any) => {
-    setTempCoordinate(e.nativeEvent.coordinate);
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    Keyboard.dismiss();
+    try {
+      const result = await Location.geocodeAsync(searchQuery);
+      if (result.length > 0) {
+        const { latitude, longitude } = result[0];
+        const newRegion = { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+        mapRef.current?.animateToRegion(newRegion, 1000);
+      }
+    } catch (error) {
+      alert('找不到該地點');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleLongPress = async (e: any) => {
+    const coord = e.nativeEvent.coordinate;
+    setTempCoordinate(coord);
     setNewPlaceName('');
     setSelectedMood(MOOD_OPTIONS[0]);
+    
+    try {
+      const addressResult = await Location.reverseGeocodeAsync(coord);
+      if (addressResult.length > 0) {
+        const addr = addressResult[0];
+        const readableAddress = `${addr.city || ''}${addr.district || ''}${addr.street || ''}${addr.streetNumber || ''}`;
+        setTempAddress(readableAddress || '未知地址');
+      }
+    } catch (err) {
+      setTempAddress('無法取得地址');
+    }
     setModalVisible(true);
   };
 
-  const saveNewMarker = () => {
+  const saveNewMarker = async () => {
     if (tempCoordinate) {
       const newMarker: RelaxMarker = {
         id: Date.now().toString(),
         coordinate: tempCoordinate,
         title: newPlaceName || '未命名避風港',
+        address: tempAddress,
         moodColor: selectedMood.color,
         moodLabel: selectedMood.label,
       };
       const updatedMarkers = [...markers, newMarker];
       setMarkers(updatedMarkers);
-      saveMarkers(updatedMarkers);
+      await AsyncStorage.setItem('markers', JSON.stringify(updatedMarkers));
     }
     setModalVisible(false);
   };
 
-  const darkMapStyle = [
-    { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
-  ];
+  const centerOnUser = async () => {
+    let userLocation = await Location.getCurrentPositionAsync({});
+    mapRef.current?.animateToRegion({
+      latitude: userLocation.coords.latitude,
+      longitude: userLocation.coords.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 1000);
+  };
 
   return (
     <View style={styles.container}>
@@ -151,220 +157,220 @@ export default function MapScreen() {
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={styles.map}
-        region={region}
+        initialRegion={region}
         showsUserLocation={true}
         customMapStyle={isDarkMode ? darkMapStyle : []}
         onLongPress={handleLongPress}
-        onRegionChangeComplete={(newRegion) => setRegion(newRegion)}
       >
         {markers.map((marker) => (
-          <Marker 
-            key={marker.id} 
-            coordinate={marker.coordinate} 
-            title={marker.title} 
-            description={`心情分類: ${marker.moodLabel}`}
-          >
-            <View style={[styles.relaxMarker, { borderColor: marker.moodColor }]}>
-              <Ionicons name="heart" size={26} color={marker.moodColor} />
+          <Marker key={marker.id} coordinate={marker.coordinate}>
+            <View style={[styles.customMarker, { borderColor: marker.moodColor }]}>
+              <Ionicons name="heart" size={24} color={marker.moodColor} />
             </View>
+            <Callout tooltip>
+              <View style={styles.calloutCard}>
+                <Text style={styles.calloutTitle}>{marker.title}</Text>
+                <Text style={styles.calloutAddress}>{marker.address}</Text>
+                <Text style={[styles.calloutMood, { color: marker.moodColor }]}># {marker.moodLabel}</Text>
+              </View>
+            </Callout>
           </Marker>
         ))}
       </MapView>
 
-      {/* 搜尋欄 */}
-      <View style={styles.searchContainer}>
-        <View style={styles.textInputContainer}>
+      {/* 頂部搜尋欄 */}
+      <View style={styles.topContainer}>
+        <View style={styles.searchBar}>
           <TextInput
             style={styles.searchInput}
-            placeholder="搜尋療癒空間..."
-            placeholderTextColor="#999"
+            placeholder="尋找下一個舒壓點..."
+            placeholderTextColor="#94A3B8"
             value={searchQuery}
             onChangeText={setSearchQuery}
-            returnKeyType="search"
             onSubmitEditing={handleSearch}
           />
-          <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-            {isSearching ? <ActivityIndicator size="small" color="#6200ee" /> : <Ionicons name="search" size={20} color="#6200ee" />}
+          <TouchableOpacity onPress={handleSearch} style={styles.searchIcon}>
+            {isSearching ? <ActivityIndicator size="small" color="#6366F1" /> : <Ionicons name="search" size={20} color="#6366F1" />}
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 右側按鈕組 */}
-      <View style={styles.buttonGroup}>
-        <TouchableOpacity
-          style={[styles.circleButton, { backgroundColor: isDarkMode ? '#242f3e' : '#fff' }]}
+      {/* 右側功能鍵：僅保留一個定位鍵，風格美化 */}
+      <View style={styles.sideButtons}>
+        <TouchableOpacity style={styles.mainFab} onPress={centerOnUser}>
+          <Ionicons name="navigate" size={24} color="white" />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.miniFab, { backgroundColor: isDarkMode ? '#1E293B' : '#FFF' }]} 
           onPress={() => setIsDarkMode(!isDarkMode)}
         >
-          <Ionicons name={isDarkMode ? 'sunny' : 'moon'} size={22} color={isDarkMode ? '#FFD700' : '#6200ee'} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.circleButton, { backgroundColor: isDarkMode ? '#242f3e' : '#fff', marginTop: 15 }]}
-          onPress={async () => {
-            let loc = await Location.getCurrentPositionAsync({});
-            const currentPos = { ...region, latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-            setRegion(currentPos);
-            mapRef.current?.animateToRegion(currentPos, 1000);
-          }}
-        >
-          <Ionicons name="locate" size={22} color="#6200ee" />
+          <Ionicons name={isDarkMode ? 'sunny' : 'moon'} size={20} color="#6366F1" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.hintContainer}>
-        <Ionicons name="information-circle-outline" size={14} color="#666" />
-        <Text style={styles.hintText}> 長按地圖，標記屬於你的療癒角落</Text>
+      {/* 底部提示文字：避開導航欄 */}
+      <View style={styles.hintWrapper}>
+        <View style={styles.hintBubble}>
+          <Ionicons name="information-circle-outline" size={16} color="#6366F1" style={{marginRight: 6}} />
+          <Text style={styles.hintText}>需要長按地點新增紓壓地點</Text>
+        </View>
       </View>
 
       {/* 新增地點 Modal */}
       <Modal animationType="slide" transparent={true} visible={modalVisible}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={[styles.modalView, { backgroundColor: isDarkMode ? '#1a1a1a' : '#fff' }]}>
-            <View style={styles.modalHeaderLine} />
-            <Text style={[styles.modalTitle, { color: isDarkMode ? '#fff' : '#000' }]}>新增避風港</Text>
-            
+          <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#0F172A' : '#FFF' }]}>
+            <View style={styles.dragHandle} />
+            <Text style={[styles.modalTitle, { color: isDarkMode ? '#F1F5F9' : '#1E293B' }]}>收藏這份寧靜</Text>
+            <Text style={styles.modalAddress}>{tempAddress}</Text>
+
             <TextInput
-              style={[styles.input, { color: isDarkMode ? '#fff' : '#000', borderBottomColor: isDarkMode ? '#444' : '#eee' }]}
-              placeholder="給這個地方一個溫暖的名字..."
-              placeholderTextColor="#999"
+              style={[styles.modalInput, { color: isDarkMode ? '#FFF' : '#000' }]}
+              placeholder="給這個空間一個名字..."
+              placeholderTextColor="#94A3B8"
               value={newPlaceName}
               onChangeText={setNewPlaceName}
               autoFocus={true}
             />
 
-            <Text style={[styles.moodSelectTitle, { color: isDarkMode ? '#ccc' : '#666' }]}>選擇此刻的心情顏色：</Text>
-            <View style={styles.moodContainer}>
+            <View style={styles.moodSelector}>
               {MOOD_OPTIONS.map((mood) => (
                 <TouchableOpacity
                   key={mood.label}
-                  style={[
-                    styles.moodOption,
-                    { borderColor: selectedMood.label === mood.label ? mood.color : 'transparent', borderWidth: 2 }
-                  ]}
+                  style={[styles.moodItem, selectedMood.label === mood.label && { backgroundColor: mood.color + '20', borderColor: mood.color }]}
                   onPress={() => setSelectedMood(mood)}
                 >
-                  <Ionicons name={mood.icon as any} size={20} color={mood.color} />
-                  <Text style={[styles.moodLabel, { color: mood.color }]}>{mood.label}</Text>
+                  <Ionicons name={mood.icon as any} size={18} color={mood.color} />
+                  <Text style={[styles.moodItemText, { color: mood.color }]}>{mood.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalBtn} onPress={() => setModalVisible(false)}>
-                <Text style={styles.cancelText}>取消</Text>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+                <Text style={styles.cancelButtonText}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={saveNewMarker}>
-                <Text style={styles.saveText}>收藏地點</Text>
+              <TouchableOpacity style={styles.saveButton} onPress={saveNewMarker}>
+                <Text style={styles.saveButtonText}>確認收藏</Text>
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
-      {errorMsg && <View style={styles.errorOverlay}><Text style={styles.errorText}>{errorMsg}</Text></View>}
     </View>
   );
 }
 
+const darkMapStyle = [
+  { elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+];
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  container: { flex: 1 },
   map: { width: width, height: height },
-  searchContainer: {
+  
+  // 提示氣泡 (避開導航欄)
+  hintWrapper: {
     position: 'absolute',
-    top: 60,
-    width: '90%',
-    alignSelf: 'center',
-    zIndex: 10,
+    bottom: 100, // 增加距離確保不被 TabBar 擋住
+    width: '100%',
+    alignItems: 'center',
+    pointerEvents: 'none',
   },
-  textInputContainer: {
+  hintBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 25,
-    paddingRight: 10,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 10,
-  },
-  searchInput: {
-    flex: 1,
-    height: 50,
-    paddingHorizontal: 20,
-    fontSize: 16,
-    backgroundColor: 'transparent',
-    fontFamily: 'ZenKurenaido'
-  },
-  searchButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  buttonGroup: { position: 'absolute', right: 20, top: 130, zIndex: 5 },
-  circleButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  relaxMarker: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20,
-    padding: 6,
-    borderWidth: 2,
     elevation: 5,
   },
-  hintContainer: {
-    position: 'absolute',
-    bottom: 110,
-    alignSelf: 'center',
+  hintText: {
+    fontFamily: 'ZenKurenaido',
+    fontSize: 14,
+    color: '#64748B',
+  },
+
+  // 頂部搜尋
+  topContainer: { position: 'absolute', top: 50, width: '100%', alignItems: 'center', paddingHorizontal: 20 },
+  searchBar: {
     flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 30,
+    height: 50,
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
+    paddingHorizontal: 20,
+    elevation: 8,
+    shadowColor: '#6366F1',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  searchInput: { flex: 1, fontFamily: 'ZenKurenaido', fontSize: 16 },
+  searchIcon: { padding: 5 },
+
+  // 功能鍵
+  sideButtons: { position: 'absolute', right: 20, top: 120, alignItems: 'center' },
+  mainFab: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center', alignItems: 'center',
+    elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5,
+  },
+  miniFab: {
+    width: 44, height: 44, borderRadius: 22,
+    marginTop: 15,
+    justifyContent: 'center', alignItems: 'center',
+    elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3,
+  },
+
+  // Marker & Callout
+  customMarker: {
+    backgroundColor: 'white',
+    padding: 6,
     borderRadius: 20,
+    borderWidth: 2,
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5,
+  },
+  calloutCard: {
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 20,
+    width: 200,
     borderWidth: 1,
-    borderColor: '#eee'
+    borderColor: '#F1F5F9',
   },
-  hintText: { fontSize: 13, color: '#666', fontFamily: 'ZenKurenaido' },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalView: {
-    width: '100%',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    padding: 30,
-    paddingBottom: 40,
+  calloutTitle: { fontFamily: 'ZenKurenaido', fontSize: 17, fontWeight: 'bold', marginBottom: 5 },
+  calloutAddress: { fontFamily: 'ZenKurenaido', fontSize: 12, color: '#94A3B8', marginBottom: 5 },
+  calloutMood: { fontFamily: 'ZenKurenaido', fontSize: 12, fontWeight: 'bold' },
+
+  // Modal
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
+  modalContent: { borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 30, paddingBottom: 50 },
+  dragHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 2, marginBottom: 20 },
+  modalTitle: { fontFamily: 'ZenKurenaido', fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
+  modalAddress: { fontFamily: 'ZenKurenaido', fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 8 },
+  modalInput: { 
+    borderBottomWidth: 1.5, borderColor: '#6366F1', 
+    marginTop: 30, paddingVertical: 10, 
+    fontFamily: 'ZenKurenaido', fontSize: 20, textAlign: 'center' 
   },
-  modalHeaderLine: { width: 40, height: 5, backgroundColor: '#ddd', borderRadius: 3, marginBottom: 20, alignSelf: 'center' },
-  modalTitle: { fontSize: 20, marginBottom: 20,  textAlign: 'center', fontFamily: 'ZenKurenaido' },
-  input: {
-    width: '100%',
-    borderBottomWidth: 1,
-    marginBottom: 25,
-    padding: 10,
-    fontSize: 18,
-    fontFamily: 'ZenKurenaido'
+  moodSelector: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 },
+  moodItem: { 
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 8, 
+    borderRadius: 20, borderWidth: 1, borderColor: '#F1F5F9', marginHorizontal: 5 
   },
-  moodSelectTitle: { fontSize: 14, marginBottom: 15, fontFamily: 'ZenKurenaido' },
-  moodContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 },
-  moodOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    marginHorizontal: 5,
-    borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.03)',
-  },
-  moodLabel: { marginLeft: 5, fontSize: 14, fontFamily: 'ZenKurenaido' },
-  modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-between' },
-  modalBtn: { flex: 1, alignItems: 'center', padding: 15 },
-  saveBtn: { backgroundColor: '#6200ee', borderRadius: 15 },
-  cancelText: { color: '#999', fontSize: 16, fontFamily: 'ZenKurenaido' },
-  saveText: { color: '#fff', fontSize: 16,  fontFamily: 'ZenKurenaido' },
-  errorOverlay: { position: 'absolute', bottom: 150, backgroundColor: '#ff5252', padding: 12, borderRadius: 25, alignSelf: 'center' },
-  errorText: { color: 'white', fontFamily: 'ZenKurenaido' }
+  moodItemText: { fontFamily: 'ZenKurenaido', fontSize: 14, marginLeft: 5, fontWeight: '600' },
+  modalFooter: { flexDirection: 'row', marginTop: 40, justifyContent: 'space-between' },
+  cancelButton: { flex: 1, paddingVertical: 15, alignItems: 'center' },
+  cancelButtonText: { fontFamily: 'ZenKurenaido', color: '#94A3B8', fontSize: 16 },
+  saveButton: { flex: 2, backgroundColor: '#6366F1', borderRadius: 20, paddingVertical: 15, alignItems: 'center' },
+  saveButtonText: { fontFamily: 'ZenKurenaido', color: 'white', fontSize: 16, fontWeight: 'bold' },
 });

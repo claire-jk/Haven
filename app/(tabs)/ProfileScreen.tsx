@@ -92,7 +92,7 @@ const ProfileScreen = () => {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>避風港導覽</Text>
-          <NavItem title="避風港地圖" target="Map" icon="📍" />
+          <NavItem title="避風港地圖" target="SavedPlaces" icon="📍" />
           <NavItem title="碎片時光牆" target="Timeline" icon="⏳" />
           <NavItem title="療癒中心 (Unity)" target="HealingCenter" icon="✨" />
         </View>

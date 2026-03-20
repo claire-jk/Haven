@@ -60,7 +60,7 @@ export default function TabNavigator() {
         },
         tabBarActiveTintColor: '#6200ee',
         tabBarInactiveTintColor: 'gray',
-        headerShown: true,
+        headerShown: false,
       })}
     >
       {/* 關鍵修正：

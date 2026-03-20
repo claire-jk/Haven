@@ -4,16 +4,16 @@ import { useRouter } from 'expo-router';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    ImageBackground,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Animated,
+  Dimensions,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -247,7 +247,6 @@ const styles = StyleSheet.create({
     color: '#fff', 
     fontSize: 20, 
     fontFamily: 'ZenKurenaido',
-    fontWeight: 'bold',
     letterSpacing: 2
   },
   dividerBox: { flexDirection: 'row', alignItems: 'center', marginVertical: 25 },
