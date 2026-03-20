@@ -2,14 +2,17 @@ import { NavigationContainer, NavigationIndependentTree } from '@react-navigatio
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 // 匯入頁面
+import FragmentListScreen from './FragmentListScreen';
+import HealingStatsScreen from './HealingStatsScreen';
 import LoginScreen from './Login';
 import SavedPlacesScreen from './SavedPlacesScreen';
 import TabNavigator from './TabNavigator';
 
 const Stack = createNativeStackNavigator();
+const CUSTOM_FONT = 'ZenKurenaido';
 
 export default function AppIndex() {
   const [loading, setLoading] = useState(true);
@@ -27,7 +30,8 @@ export default function AppIndex() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6200ee" />
+        <ActivityIndicator size="small" color="#94A3B8" />
+        <Text style={styles.loadingText}>正在開啟避風港...</Text>
       </View>
     );
   }
@@ -36,7 +40,26 @@ export default function AppIndex() {
     <NavigationIndependentTree>
       <NavigationContainer>
         {user ? (
-          <Stack.Navigator>
+          <Stack.Navigator
+            screenOptions={{
+              // 🔥 1. 統一所有頁面 Header 的字體與風格
+              headerTitleStyle: {
+                fontFamily: CUSTOM_FONT,
+                fontSize: 20,
+                color: '#1E293B',
+              },
+              headerBackTitleStyle: {
+                fontFamily: CUSTOM_FONT,
+                fontSize: 16,
+              },
+              headerTintColor: '#64748B', // 返回按鈕顏色
+              headerStyle: {
+                backgroundColor: '#F8FAFC', // 與頁面背景呼應
+              },
+              headerShadowVisible: false, // 去除底部陰影，更顯極簡
+              headerTitleAlign: 'center',
+            }}
+          >
             
             {/* 🔥 Tab 主畫面 */}
             <Stack.Screen
@@ -45,13 +68,33 @@ export default function AppIndex() {
               options={{ headerShown: false }}
             />
 
-            {/* 🔥 沒有 Tab 的頁面 */}
+            {/* 🔥 沒有 Tab 的內頁 - 美化配置 */}
             <Stack.Screen
               name="SavedPlaces"
               component={SavedPlacesScreen}
               options={{
                 title: '我的避風港',
                 headerBackTitle: '返回',
+              }}
+            />
+            
+            <Stack.Screen
+              name="FragmentList"
+              component={FragmentListScreen}
+              options={{
+                title: '時光碎片牆',
+                headerBackTitle: '返回',
+                headerShown: true,
+              }}
+            />
+            
+            <Stack.Screen
+              name="HealingStats"
+              component={HealingStatsScreen}
+              options={{
+                title: '療癒成長統計',
+                headerBackTitle: '返回',
+                headerShown: true,
               }}
             />
 
@@ -69,6 +112,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F8FAFC',
+  },
+  loadingText: {
+    marginTop: 15,
+    fontFamily: CUSTOM_FONT,
+    fontSize: 16,
+    color: '#94A3B8',
+    letterSpacing: 2,
   },
 });

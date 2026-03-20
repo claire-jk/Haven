@@ -1,5 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { doc, increment, setDoc, updateDoc } from 'firebase/firestore';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import {
   Dimensions,
@@ -20,58 +21,104 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withSpring,
-  withTiming,
+  withTiming
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { auth, db } from './firebaseConfig';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// 統一字體常數
 const CUSTOM_FONT = 'ZenKurenaido';
 
-// --- Bubble Component ---
-const Bubble = memo(({ text, size, x, y, onPop }: any) => {
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0);
-  const driftX = useSharedValue(Math.random() * 20 - 10);
-  const driftY = useSharedValue(Math.random() * 20 - 10);
+// --- 爆破粒子組件 ---
+const Particle = memo(({ color }: { color: string }) => {
+  const progress = useSharedValue(0);
+  const randomX = (Math.random() - 0.5) * 200;
+  const randomY = (Math.random() - 0.5) * 200;
 
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 12, stiffness: 100 });
-    opacity.value = withTiming(1, { duration: 500 });
-    driftX.value = withRepeat(withTiming(-driftX.value, { duration: 4000 + Math.random() * 1000 }), -1, true);
-    driftY.value = withRepeat(withTiming(-driftY.value, { duration: 4500 + Math.random() * 1000 }), -1, true);
+    progress.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.quad) });
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: progress.value * randomX },
+      { translateY: progress.value * randomY },
+      { scale: 1 - progress.value },
+    ],
+    opacity: 1 - progress.value,
+  }));
+
+  return <Animated.View style={[styles.particle, { backgroundColor: color }, animatedStyle]} />;
+});
+
+// --- Bubble 子組件 ---
+const Bubble = memo(({ text, size, x, y, onPop }: any) => {
+  const [isPopping, setIsPopping] = useState(false);
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0);
+  const driftX = useSharedValue(Math.random() * 30 - 15);
+  const driftY = useSharedValue(Math.random() * 30 - 15);
+
+  useEffect(() => {
+    scale.value = withSpring(1, { damping: 15 });
+    opacity.value = withTiming(1, { duration: 800 });
+    driftX.value = withRepeat(withTiming(-driftX.value, { duration: 5000 + Math.random() * 2000 }), -1, true);
+    driftY.value = withRepeat(withTiming(-driftY.value, { duration: 5500 + Math.random() * 2000 }), -1, true);
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ scale: scale.value }, { translateX: driftX.value }, { translateY: driftY.value }],
+    transform: [
+      { scale: scale.value },
+      { translateX: driftX.value },
+      { translateY: driftY.value },
+    ],
   }));
 
   const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    scale.value = withTiming(1.5, { duration: 150 });
-    opacity.value = withTiming(0, { duration: 150 }, () => { runOnJS(onPop)(); });
+    if (isPopping) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsPopping(true);
+    
+    scale.value = withSequence(
+      withTiming(1.2, { duration: 100 }),
+      withTiming(0, { duration: 100 }, () => {
+        runOnJS(onPop)();
+      })
+    );
+    opacity.value = withTiming(0, { duration: 150 });
   };
 
   return (
-    <Animated.View style={[styles.bubbleWrapper, { left: x, top: y }, animatedStyle]}>
-      <TouchableOpacity activeOpacity={1} onPress={handlePress}>
-        <View style={[styles.bubble, { width: size, height: size, borderRadius: size / 2 }]}>
-          <LinearGradient
-            colors={['rgba(255,255,255,0.6)', 'rgba(180,230,255,0.3)']}
-            style={[StyleSheet.absoluteFill, { borderRadius: size / 2 }]}
-          />
-          <View style={styles.bubbleReflection} />
-          <Text style={styles.bubbleText} numberOfLines={3}>{text}</Text>
+    <View style={[styles.bubbleWrapper, { left: x, top: y }]}>
+      {isPopping && (
+        <View style={{ position: 'absolute', left: size / 2, top: size / 2 }}>
+          {[...Array(8)].map((_, i) => (
+            <Particle key={i} color="rgba(173, 216, 230, 0.8)" />
+          ))}
         </View>
-      </TouchableOpacity>
-    </Animated.View>
+      )}
+      {!isPopping && (
+        <Animated.View style={[animatedStyle]}>
+          <TouchableOpacity activeOpacity={0.9} onPress={handlePress}>
+            <View style={[styles.bubble, { width: size, height: size, borderRadius: size / 2 }]}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.5)', 'rgba(180,230,255,0.2)', 'rgba(255,255,255,0.05)']}
+                style={[StyleSheet.absoluteFill, { borderRadius: size / 2 }]}
+              />
+              <View style={styles.bubbleReflection} />
+              <Text style={styles.bubbleText} numberOfLines={3}>{text}</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+    </View>
   );
 });
 
-// --- Main Screen ---
+// --- 主螢幕組件 ---
 const HealingCenterScreen = () => {
   const [inputText, setInputText] = useState('');
   const [bubbles, setBubbles] = useState<any[]>([]);
@@ -79,32 +126,45 @@ const HealingCenterScreen = () => {
   const themeProgress = useSharedValue(0);
 
   const hasBubbles = bubbles.length > 0;
+
   useEffect(() => {
     themeProgress.value = withTiming(hasBubbles ? 1 : 0, {
-      duration: 1000,
+      duration: 1200,
       easing: Easing.bezier(0.4, 0, 0.2, 1),
     });
   }, [hasBubbles]);
 
   const animatedBackgroundStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(themeProgress.value, [0, 1], ['#F0F9FF', '#0F172A']),
+    backgroundColor: interpolateColor(themeProgress.value, [0, 1], ['#FDFCF0', '#1A1C2C']),
   }));
 
   const animatedTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(themeProgress.value, [0, 1], ['#2D3748', '#F1F5F9']),
+    color: interpolateColor(themeProgress.value, [0, 1], ['#4A5568', '#E2E8F0']),
   }));
+
+  const removeBubble = useCallback(async (id: number) => {
+    setBubbles(prev => prev.filter(b => b.id !== id));
+    const user = auth.currentUser;
+    if (user) {
+      const userStatsRef = doc(db, "user_stats", user.uid);
+      try {
+        await updateDoc(userStatsRef, { bubblesPopped: increment(1) });
+      } catch (e) {
+        await setDoc(userStatsRef, { bubblesPopped: 1 }, { merge: true });
+      }
+    }
+  }, []);
 
   const createBubble = () => {
     if (!inputText.trim()) return;
-    const size = Math.min(Math.max(inputText.length * 8 + 100, 110), 160);
-    const padding = 25;
-    const headerHeight = 120;
-    const inputAreaHeight = 180; 
-
+    const size = Math.min(Math.max(inputText.length * 5 + 110, 120), 170);
+    const padding = 30;
+    
+    // 計算安全範圍，避免泡泡生成在輸入框擋住的地方
     const minX = padding;
     const maxX = SCREEN_WIDTH - size - padding;
-    const minY = insets.top + headerHeight;
-    const maxY = SCREEN_HEIGHT - insets.bottom - inputAreaHeight - size;
+    const minY = insets.top + 100;
+    const maxY = SCREEN_HEIGHT - insets.bottom - 220 - size;
 
     const newBubble = {
       id: Date.now(),
@@ -120,34 +180,29 @@ const HealingCenterScreen = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const removeBubble = useCallback((id: number) => {
-    setBubbles(prev => prev.filter(b => b.id !== id));
-  }, []);
-
   return (
     <Animated.View style={[styles.container, animatedBackgroundStyle]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        // 修正 2：改用 position 並微調 offset
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+        // 增加偏移量，確保輸入框不會被鍵盤遮擋
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={{ flex: 1 }}>
-
+            
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+            <View style={[styles.header, { paddingTop: insets.top + 30 }]}>
               <Animated.Text style={[styles.title, animatedTextStyle]}>心靈釋放空間</Animated.Text>
-              <Animated.Text style={[styles.subtitle, animatedTextStyle]}>寫下煩惱，點擊泡泡讓它消失</Animated.Text>
+              <Animated.Text style={[styles.subtitle, animatedTextStyle]}>寫下煩惱，點擊泡泡炸掉它</Animated.Text>
             </View>
 
             {/* Bubble Area */}
             <View style={styles.bubbleArea}>
               {bubbles.length === 0 && (
                 <View style={styles.emptyContainer}>
-                  <Animated.Text style={[styles.emptyText, animatedTextStyle]}>
-                    心靈正處於平靜狀態
-                  </Animated.Text>
+                  <Animated.Text style={[styles.emptyText, animatedTextStyle]}>寧靜之境</Animated.Text>
+                  <View style={styles.emptyCircle} />
                 </View>
               )}
               {bubbles.map((b) => (
@@ -155,25 +210,29 @@ const HealingCenterScreen = () => {
               ))}
             </View>
 
-            {/* Input Wrapper */}
-            <View style={[
-              styles.inputWrapper,
-              { paddingBottom: insets.bottom + 20 }
-            ]}>
+            {/* Input Section - 確保 zIndex 足夠高 */}
+            <View style={[styles.inputWrapper, { paddingBottom: insets.bottom + 20 }]}>
               <View style={styles.inputCard}>
                 <TextInput
                   style={styles.input}
-                  placeholder="輸入你的煩惱..."
-                  placeholderTextColor="#94A3B8"
+                  placeholder="寫下此刻的煩惱..."
+                  placeholderTextColor="#A0AEC0"
                   value={inputText}
                   onChangeText={setInputText}
-                  multiline
+                  multiline={true}
                   maxLength={40}
+                  // 確保點擊 return 鍵可以正常反應
                   blurOnSubmit={true}
-                  scrollEnabled={false} 
+                  // 修正：確保在某些裝置上文字不會因為行高消失
+                  textAlignVertical="center"
                 />
-                <TouchableOpacity style={styles.sendButton} onPress={createBubble}>
-                  <Text style={styles.sendButtonText}>釋放</Text>
+                <TouchableOpacity style={styles.sendButton} onPress={createBubble} activeOpacity={0.8}>
+                  <LinearGradient
+                    colors={['#81E6D9', '#38B2AC']}
+                    style={styles.sendButtonGradient}
+                  >
+                    <Text style={styles.sendButtonText}>釋放</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             </View>
@@ -187,91 +246,59 @@ const HealingCenterScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { alignItems: 'center', paddingHorizontal: 20, zIndex: 10 },
-  title: { 
-    fontSize: 28, 
-    letterSpacing: 3, 
-    textAlign: 'center',
-    fontFamily: CUSTOM_FONT 
-  },
-  subtitle: { 
-    fontSize: 14, 
-    marginTop: 8, 
-    opacity: 0.6, 
-    textAlign: 'center',
-    fontFamily: CUSTOM_FONT 
-  },
+  header: { alignItems: 'center', paddingHorizontal: 30, zIndex: 10 },
+  title: { fontSize: 32, letterSpacing: 6, textAlign: 'center', fontFamily: CUSTOM_FONT, fontWeight: '300' },
+  subtitle: { fontSize: 13, marginTop: 12, opacity: 0.5, textAlign: 'center', fontFamily: CUSTOM_FONT },
   bubbleArea: { flex: 1, width: '100%' },
   bubbleWrapper: { position: 'absolute', zIndex: 5 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { 
-    fontSize: 16, 
-    opacity: 0.5,
-    fontFamily: CUSTOM_FONT 
-  },
+  emptyText: { fontSize: 18, opacity: 0.3, fontFamily: CUSTOM_FONT, letterSpacing: 4 },
+  emptyCircle: { position: 'absolute', width: 200, height: 200, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(129, 230, 217, 0.1)' },
   bubble: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 12,
+    padding: 15,
     ...Platform.select({
-      ios: { shadowColor: "#FFF", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10 },
-      android: { elevation: 3 },
+      ios: { shadowColor: "#ADDEFF", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 15 },
+      android: { elevation: 5 },
     }),
   },
   bubbleReflection: {
-    position: 'absolute', top: '12%', left: '12%', width: '20%', height: '10%',
-    backgroundColor: 'rgba(255,255,255,0.35)', borderRadius: 10, transform: [{ rotate: '-45deg' }],
+    position: 'absolute', top: '15%', left: '15%', width: '30%', height: '15%',
+    backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: 20, transform: [{ rotate: '-45deg' }],
   },
-  bubbleText: { 
-    color: '#1E293B', 
-    fontSize: 13, 
-    textAlign: 'center', 
-    fontWeight: '600', 
-    paddingHorizontal: 5,
-    fontFamily: CUSTOM_FONT 
-  },
-  inputWrapper: { 
-    width: '100%', 
-    paddingHorizontal: 20, 
-    zIndex: 50,
-    backgroundColor: 'transparent'
-  },
+  bubbleText: { color: '#2D3748', fontSize: 14, textAlign: 'center', fontFamily: CUSTOM_FONT, paddingHorizontal: 10 },
+  particle: { position: 'absolute', width: 6, height: 6, borderRadius: 3 },
+  inputWrapper: { width: '100%', paddingHorizontal: 25, zIndex: 100 },
   inputCard: {
     flexDirection: 'row', 
-    backgroundColor: 'rgba(255,255,255,0.98)', 
-    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.95)', 
+    borderRadius: 24,
     padding: 8, 
-    paddingLeft: 20, 
     alignItems: 'center',
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.8)',
     shadowColor: "#000", 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.15, 
-    shadowRadius: 8, 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 10, 
     elevation: 5,
   },
   input: { 
     flex: 1, 
     fontSize: 16, 
-    color: '#0F172A', 
+    color: '#4A5568', 
     minHeight: 45, 
-    maxHeight: 100, 
-    paddingVertical: 10,
-    fontFamily: CUSTOM_FONT 
+    paddingHorizontal: 12,
+    fontFamily: CUSTOM_FONT,
+    // 確保輸入文字清晰
+    backgroundColor: 'transparent',
   },
-  sendButton: { 
-    backgroundColor: '#0EA5E9', 
-    paddingVertical: 10, 
-    paddingHorizontal: 22, 
-    borderRadius: 25, 
-    marginLeft: 10 
-  },
-  sendButtonText: { 
-    color: '#FFF', 
-    fontSize: 15, 
-    fontFamily: CUSTOM_FONT 
-  },
+  sendButton: { borderRadius: 18, overflow: 'hidden', marginLeft: 8 },
+  sendButtonGradient: { paddingVertical: 10, paddingHorizontal: 20 },
+  sendButtonText: { color: '#FFF', fontSize: 16, fontFamily: CUSTOM_FONT, fontWeight: '600' },
 });
 
 export default HealingCenterScreen;

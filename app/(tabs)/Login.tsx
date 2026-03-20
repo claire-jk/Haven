@@ -129,11 +129,6 @@ export default function LoginScreen() {
                 <View style={styles.line} />
               </View>
 
-              <TouchableOpacity style={styles.googleButton} activeOpacity={0.7}>
-                <AntDesign name="google" size={18} color="#EA4335" style={{ marginRight: 10 }} />
-                <Text style={styles.googleText}>Google 快速登入</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity style={{ marginTop: 30 }} onPress={() => router.push('/Register')}>
                 <Text style={styles.switchText}>
                   尚未加入？ <Text style={styles.switchTextBold}>立即註冊</Text>
