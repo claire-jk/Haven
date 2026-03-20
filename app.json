@@ -11,7 +11,8 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.clairejk.haven"
+      "bundleIdentifier": "com.clairejk.haven",
+      "googleServicesFile": "./GoogleService-Info.plist" 
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +23,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.clairejk.haven"
+      "package": "com.clairejk.haven",
+      "googleServicesFile": "./google-services.json" 
     },
     "web": {
       "output": "static",
