@@ -52,6 +52,7 @@ export default function LoginScreen() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       showToast('✨ 登入成功，歡迎回來');
+      router.replace('/(tabs)');
     } catch (error: any) {
       let msg = '登入失敗';
       if (error.code === 'auth/invalid-credential') msg = '信箱或密碼錯誤';

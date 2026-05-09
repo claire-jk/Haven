@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
@@ -17,6 +17,10 @@ import {
   View,
 } from 'react-native';
 import MapView, { Callout, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+
+// 導入 Firebase 設定 (請確保路徑正確)
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { auth, db } from './firebaseConfig';
 
 const MOOD_OPTIONS = [
   { label: '靜謐', color: '#4A90E2', icon: 'leaf-outline' },
@@ -59,18 +63,29 @@ export default function MapScreen() {
     longitudeDelta: 0.01,
   });
 
-  const loadMarkers = async () => {
-    try {
-      const storedMarkers = await AsyncStorage.getItem('markers');
-      if (storedMarkers) setMarkers(JSON.parse(storedMarkers));
-    } catch (error) {
-      console.error('Failed to load markers:', error);
-    }
-  };
+  // 取得當前使用者 UID
+  const userId = auth.currentUser?.uid;
 
+  // --- 修改後的讀取邏輯：使用 Firestore 實時監聽 ---
   useEffect(() => {
-    if (isFocused) loadMarkers();
-  }, [isFocused]);
+    if (isFocused && userId) {
+      const userDocRef = doc(db, 'users', userId);
+      
+      // 監聽該使用者的專屬文件
+      const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setMarkers(data.markers || []);
+        } else {
+          setMarkers([]);
+        }
+      }, (error) => {
+        console.error("讀取 Firestore 失敗:", error);
+      });
+
+      return () => unsubscribe(); // 卸載監聽
+    }
+  }, [isFocused, userId]);
 
   useEffect(() => {
     (async () => {
@@ -99,7 +114,7 @@ export default function MapScreen() {
         mapRef.current?.animateToRegion(newRegion, 1000);
       }
     } catch (error) {
-      alert('找不到該地點');
+      Alert.alert('找不到該地點');
     } finally {
       setIsSearching(false);
     }
@@ -124,7 +139,14 @@ export default function MapScreen() {
     setModalVisible(true);
   };
 
+  // --- 修改後的儲存邏輯：儲存至 Firestore ---
   const saveNewMarker = async () => {
+    if (!userId) {
+      Alert.alert("提示", "請先登入後再收藏地點");
+      setModalVisible(false);
+      return;
+    }
+
     if (tempCoordinate) {
       const newMarker: RelaxMarker = {
         id: Date.now().toString(),
@@ -134,9 +156,18 @@ export default function MapScreen() {
         moodColor: selectedMood.color,
         moodLabel: selectedMood.label,
       };
+      
       const updatedMarkers = [...markers, newMarker];
-      setMarkers(updatedMarkers);
-      await AsyncStorage.setItem('markers', JSON.stringify(updatedMarkers));
+      
+      try {
+        // 更新該使用者的雲端文件
+        await setDoc(doc(db, 'users', userId), {
+          markers: updatedMarkers
+        }, { merge: true });
+      } catch (error) {
+        console.error("雲端儲存失敗:", error);
+        Alert.alert("錯誤", "無法同步到雲端，請檢查網路設定");
+      }
     }
     setModalVisible(false);
   };
@@ -178,7 +209,6 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      {/* 1. 頂部搜尋欄 - 修正 iOS 點擊攔截 */}
       <View style={styles.topContainer} pointerEvents="box-none">
         <View style={styles.searchBar}>
           <TextInput
@@ -195,7 +225,6 @@ export default function MapScreen() {
         </View>
       </View>
 
-      {/* 2. 右側功能鍵 - 修正 iOS 點擊攔截 */}
       <View style={styles.sideButtons} pointerEvents="box-none">
         <TouchableOpacity style={styles.mainFab} onPress={centerOnUser}>
           <Ionicons name="navigate" size={24} color="white" />
@@ -208,7 +237,6 @@ export default function MapScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 3. 底部提示文字 - 修正 iOS 點擊攔截 */}
       <View style={styles.hintWrapper} pointerEvents="none">
         <View style={styles.hintBubble}>
           <Ionicons name="information-circle-outline" size={16} color="#6366F1" style={{marginRight: 6}} />
@@ -216,7 +244,6 @@ export default function MapScreen() {
         </View>
       </View>
 
-      {/* 新增地點 Modal */}
       <Modal animationType="slide" transparent={true} visible={modalVisible}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
@@ -264,7 +291,6 @@ export default function MapScreen() {
   );
 }
 
-// ... 樣式表(styles)與地圖樣式(darkMapStyle)保持不變 ...
 const darkMapStyle = [
   { elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
