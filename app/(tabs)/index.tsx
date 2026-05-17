@@ -1,8 +1,11 @@
-import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
+import { NavigationIndependentTree } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+
+// 💡 修正 1：改用同路徑下的 firebaseConfig
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from './firebaseConfig';
 
 // 匯入頁面
 import FragmentListScreen from './FragmentListScreen';
@@ -17,7 +20,6 @@ const CUSTOM_FONT = 'ZenKurenaido';
 export default function AppIndex() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  const auth = getAuth();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -37,72 +39,68 @@ export default function AppIndex() {
   }
 
   return (
+    // 💡 修正 2：保留 IndependentTree 以相容你的子導航，但移除了最外層重複的 NavigationContainer，避免干擾 Expo Router
     <NavigationIndependentTree>
-      <NavigationContainer>
-        {user ? (
-          <Stack.Navigator
-            screenOptions={{
-              // 🔥 1. 統一所有頁面 Header 的字體與風格
-              headerTitleStyle: {
-                fontFamily: CUSTOM_FONT,
-                fontSize: 20,
-                color: '#1E293B',
-              },
-              headerBackTitleStyle: {
-                fontFamily: CUSTOM_FONT,
-                fontSize: 16,
-              },
-              headerTintColor: '#64748B', // 返回按鈕顏色
-              headerStyle: {
-                backgroundColor: '#F8FAFC', // 與頁面背景呼應
-              },
-              headerShadowVisible: false, // 去除底部陰影，更顯極簡
-              headerTitleAlign: 'center',
+      {user ? (
+        <Stack.Navigator
+          screenOptions={{
+            headerTitleStyle: {
+              fontFamily: CUSTOM_FONT,
+              fontSize: 20,
+              color: '#1E293B',
+            },
+            headerBackTitleStyle: {
+              fontFamily: CUSTOM_FONT,
+              fontSize: 16,
+            },
+            headerTintColor: '#64748B',
+            headerStyle: {
+              backgroundColor: '#F8FAFC',
+            },
+            headerShadowVisible: false,
+            headerTitleAlign: 'center',
+          }}
+        >
+          {/* 🔥 Tab 主畫面 */}
+          <Stack.Screen
+            name="MainTabs"
+            component={TabNavigator}
+            options={{ headerShown: false }}
+          />
+
+          {/* 🔥 沒有 Tab 的內頁 */}
+          <Stack.Screen
+            name="SavedPlaces"
+            component={SavedPlacesScreen}
+            options={{
+              title: '我的避風港',
+              headerBackTitle: '返回',
             }}
-          >
-            
-            {/* 🔥 Tab 主畫面 */}
-            <Stack.Screen
-              name="MainTabs"
-              component={TabNavigator}
-              options={{ headerShown: false }}
-            />
-
-            {/* 🔥 沒有 Tab 的內頁 - 美化配置 */}
-            <Stack.Screen
-              name="SavedPlaces"
-              component={SavedPlacesScreen}
-              options={{
-                title: '我的避風港',
-                headerBackTitle: '返回',
-              }}
-            />
-            
-            <Stack.Screen
-              name="FragmentList"
-              component={FragmentListScreen}
-              options={{
-                title: '時光碎片牆',
-                headerBackTitle: '返回',
-                headerShown: true,
-              }}
-            />
-            
-            <Stack.Screen
-              name="HealingStats"
-              component={HealingStatsScreen}
-              options={{
-                title: '療癒成長統計',
-                headerBackTitle: '返回',
-                headerShown: true,
-              }}
-            />
-
-          </Stack.Navigator>
-        ) : (
-          <LoginScreen />
-        )}
-      </NavigationContainer>
+          />
+          
+          <Stack.Screen
+            name="FragmentList"
+            component={FragmentListScreen}
+            options={{
+              title: '時光碎片牆',
+              headerBackTitle: '返回',
+              headerShown: true,
+            }}
+          />
+          
+          <Stack.Screen
+            name="HealingStats"
+            component={HealingStatsScreen}
+            options={{
+              title: '療癒成長統計',
+              headerBackTitle: '返回',
+              headerShown: true,
+            }}
+          />
+        </Stack.Navigator>
+      ) : (
+        <LoginScreen />
+      )}
     </NavigationIndependentTree>
   );
 }

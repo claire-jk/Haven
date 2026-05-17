@@ -19,11 +19,6 @@ const HealingStatsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>‹ 返回</Text>
-        </TouchableOpacity>
-      </View>
 
       <View style={styles.content}>
         <Text style={styles.title}>療癒旅程統計</Text>
